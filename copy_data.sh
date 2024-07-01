@@ -1,0 +1,1 @@
+cp -r /mnt/data/factcheck/averitec-data/* .
