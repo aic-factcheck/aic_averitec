@@ -12,3 +12,4 @@ pytorch_lightning
 torchmetrics
 levenshtein
 datasets
+openai
