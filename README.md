@@ -140,6 +140,12 @@ If you find AVeriTeC useful for your research and applications, please cite us u
 ```
 
 ## 🌌 Slurm cluster usage
+To obtain data faster than via git-lfs, feel free to use `script/copy_data.sh` to copy the data to your project dir.
+```bash
+bash script/copy_data.sh
+```
+
+
 If you have access to a Slurm cluster, you can use the provided scripts to run the experiments. The scripts are located in the `script` directory. You can launch a simple jupyter notebook using:
 ```bash
 sbatch script/_slurm_job.sh
