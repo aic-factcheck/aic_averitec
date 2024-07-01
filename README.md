@@ -138,3 +138,14 @@ If you find AVeriTeC useful for your research and applications, please cite us u
   url={https://openreview.net/forum?id=fKzSz0oyaI}
 }
 ```
+
+## 🌌 Slurm cluster usage
+If you have access to a Slurm cluster, you can use the provided scripts to run the experiments. The scripts are located in the `script` directory. You can launch a simple jupyter notebook using:
+```bash
+sbatch script/_slurm_job.sh
+```
+
+and get its url using `script/jupyter_url.py`.
+```bash
+python script/jupyter_url.py
+```
