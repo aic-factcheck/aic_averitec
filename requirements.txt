@@ -1,0 +1,14 @@
+spacy
+scikit-learn
+PyMuPDF
+pandas
+trafilatura
+frontend
+transformers==4.29.2
+rank-bm25
+accelerate
+nltk
+pytorch_lightning
+torchmetrics
+levenshtein
+datasets
