@@ -27,6 +27,53 @@ def retrieve_top_k_sentences(query, document, urls, top_k):
     return [document[i] for i in top_k_idx], [urls[i] for i in top_k_idx]
 
 
+# modified original __main__ to function
+def get_top_k_sentences_bm25(knowledge_store_dir:str = "data_store/output_dev", claim_file: str = "data/dev.json", json_output:str = "data_store/dev_top_k.json", top_k:int = 100, start:int = 0, end:int = -1):
+    with open(claim_file, "r", encoding="utf-8") as json_file:
+        target_examples = json.load(json_file)
+
+    if end == -1:
+        end = len(os.listdir(knowledge_store_dir))
+        print(end)
+
+    files_to_process = list(range(start, end))
+    total = len(files_to_process)
+
+    with open(json_output, "w", encoding="utf-8") as output_json:
+        done = 0
+        for idx, example in enumerate(target_examples):
+            # Load the knowledge store for this example
+            if idx in files_to_process:
+                print(f"Processing claim {idx}... Progress: {done + 1} / {total}")
+                document_in_sentences, sentence_urls, num_urls_this_claim = (
+                    combine_all_sentences(
+                        os.path.join(knowledge_store_dir, f"{idx}.json")
+                    )
+                )
+
+                print(
+                    f"Obtained {len(document_in_sentences)} sentences from {num_urls_this_claim} urls."
+                )
+
+                # Retrieve top_k sentences with bm25
+                st = time.time()
+                top_k_sentences, top_k_urls = retrieve_top_k_sentences(
+                    example["claim"], document_in_sentences, sentence_urls, top_k
+                )
+                print(f"Top {top_k} retrieved. Time elapsed: {time.time() - st}.")
+
+                json_data = {
+                    "claim_id": idx,
+                    "claim": example["claim"],
+                    f"top_{top_k}": [
+                        {"sentence": sent, "url": url}
+                        for sent, url in zip(top_k_sentences, top_k_urls)
+                    ],
+                }
+                output_json.write(json.dumps(json_data, ensure_ascii=False) + "\n")
+                done += 1
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
