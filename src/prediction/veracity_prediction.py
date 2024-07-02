@@ -5,7 +5,7 @@ import torch
 import pytorch_lightning as pl
 from transformers import BertTokenizer, BertForSequenceClassification
 from aic_averitec.src.models.SequenceClassificationModule import SequenceClassificationModule
-
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 LABEL = [
     "Supported",
@@ -144,6 +144,132 @@ def veracity_prediction(claim_with_evidence_file="data_store/dev_top_3_rerank_qa
 
     with open(args.output_file, "w", encoding="utf-8") as output_file:
         json.dump(predictions, output_file, ensure_ascii=False, indent=4)
+
+
+class SequenceClassificationDataLoaderNLI(pl.LightningDataModule):
+    def __init__(self, tokenizer):
+        super().__init__()
+        self.tokenizer = tokenizer
+
+    def tokenize_strings(
+        self,
+        source_sentences,
+        max_length=400,
+        pad_to_max_length=False,
+        return_tensors="pt",
+    ):
+        encoded_dict = self.tokenizer(
+            source_sentences,
+            max_length=max_length,
+            padding="max_length" if pad_to_max_length else "longest",
+            truncation=True,
+            return_tensors=return_tensors,
+        )
+
+        input_ids = encoded_dict["input_ids"]
+        attention_masks = encoded_dict["attention_mask"]
+
+        return input_ids, attention_masks
+
+    def quadruple_to_string(self, claim, question, answer):
+        return [
+            claim.strip(), answer.strip()
+        ]
+
+def veracity_prediction_v2(claim_with_evidence_file:str, output_file:str, best_checkpoint:str="models/averitec/nli/deberta-v3-large/checkpoint-687", nei_new_eval=True):
+
+    examples = []
+    with open(claim_with_evidence_file) as f:
+        for line in f:
+            examples.append(json.loads(line))
+
+    id2correct_id = {0: 1, 1: 0, 2: 2}
+
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+
+    model = AutoModelForSequenceClassification.from_pretrained(best_checkpoint).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(best_checkpoint)
+
+    dataLoader_nli = SequenceClassificationDataLoaderNLI(tokenizer)
+
+    model.eval()
+
+    predictions = []
+
+    for example in tqdm.tqdm(examples):
+        example_strings = []
+        for evidence in example["evidence"]:
+            example_strings.append(
+                dataLoader_nli.quadruple_to_string(
+                    example["claim"], evidence["question"], evidence["answer"]
+                )
+            )
+
+        if (
+            len(example_strings) == 0
+        ):  # If we found no evidence e.g. because google returned 0 pages, just output NEI.
+            example["label"] = "Not Enough Evidence"
+            continue
+
+        tokenized_strings, attention_mask = dataLoader_nli.tokenize_strings(example_strings)
+        with torch.no_grad():
+            logits = model(tokenized_strings.to(device), attention_mask=attention_mask.to(device)).logits
+
+        example_support = torch.argmax(
+            logits,
+            axis=1,
+        )
+
+        #remap the labels in example support tensor using the id2correct_id
+        example_support = torch.tensor([id2correct_id[i.item()] for i in example_support])
+
+        has_unanswerable = False
+        has_true = False
+        has_false = False
+
+        for v in example_support:
+            if v == 0:
+                has_true = True
+            if v == 1:
+                has_false = True
+            if v in (
+                2,
+                3,
+            ):  # TODO another hack -- we cant have different labels for train and test so we do this
+                has_unanswerable = True
+
+        if not nei_new_eval:
+            if has_unanswerable:
+                answer = 2
+            elif has_true and not has_false:
+                answer = 0
+            elif not has_true and has_false:
+                answer = 1
+            else:
+                answer = 3
+        else:
+            if has_true and has_false:
+                answer = 3
+            elif has_true and not has_false:
+                answer = 0
+            elif not has_true and has_false:
+                answer = 1
+            else:
+                answer = 2 #otherwise NEI
+
+
+        json_data = {
+            "claim_id": example["claim_id"],
+            "claim": example["claim"],
+            "evidence": example["evidence"],
+            "pred_label": LABEL[answer],
+        }
+        predictions.append(json_data)
+
+    with open(args.output_file, "w", encoding="utf-8") as output_file:
+        json.dump(predictions, output_file, ensure_ascii=False, indent=4)
+
 
 
 if __name__ == "__main__":
