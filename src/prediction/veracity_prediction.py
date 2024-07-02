@@ -4,7 +4,7 @@ import tqdm
 import torch
 import pytorch_lightning as pl
 from transformers import BertTokenizer, BertForSequenceClassification
-from src.models.SequenceClassificationModule import SequenceClassificationModule
+from aic_averitec.src.models.SequenceClassificationModule import SequenceClassificationModule
 
 
 LABEL = [
