@@ -5,7 +5,7 @@ import json
 import os
 import time
 
-def rerank_sentences(claim: str, sentences: List[str], rerank_model="mixedbread-ai/mxbai-rerank-xsmall-v1"):
+def rerank_sentences(claim: str, sentences: List[str], rerank_model="mixedbread-ai/mxbai-rerank-xsmall-v1", top_k=10):
     #load model
     model = CrossEncoder(rerank_model, device="cuda")
     query = claim
@@ -20,7 +20,7 @@ def rerank_sentences(claim: str, sentences: List[str], rerank_model="mixedbread-
     # #get indices of sorted similarities
     # sorted_indices = similarities.argsort(descending=True)
 
-    results = model.rank(query, sentences, top_k=10)
+    results = model.rank(query, sentences, top_k=top_k)
     
     scores = []
     sorted_indices = []
@@ -46,8 +46,7 @@ def combine_all_documents(knowledge_file):
 
 
 def retrieve_top_k_sentences(query, documents, urls, top_k, rerank_model="mixedbread-ai/mxbai-rerank-xsmall-v1"):
-    _, sorted_indices = rerank_sentences(claim=query, sentences=documents, rerank_model=rerank_model)
-    top_k_idx = sorted_indices[:top_k]
+    _, top_k_idx = rerank_sentences(claim=query, sentences=documents, rerank_model=rerank_model, top_k=top_k)
     return [documents[i] for i in top_k_idx], [urls[i] for i in top_k_idx]
 
 
