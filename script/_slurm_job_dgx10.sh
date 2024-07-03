@@ -12,7 +12,7 @@ source /etc/profile.d/lmod.sh
 ml Python/3.10.4-GCCcore-11.3.0-bare
 
 # Replace with your own virtual environment
-source ~/venvs/2023feb/bin/activate
+source ~/venvs/averitec/bin/activate
 
 # Replace with absolute path to your project or sbatch from project root and comment out
 # cd ~/ullriher/aic_averitec

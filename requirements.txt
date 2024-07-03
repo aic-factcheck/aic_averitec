@@ -4,7 +4,7 @@ PyMuPDF
 pandas
 trafilatura
 frontend
-transformers==4.29.2
+transformers
 rank-bm25
 accelerate
 nltk
@@ -13,3 +13,7 @@ torchmetrics
 levenshtein
 datasets
 openai
+langchain
+sentence-transformers
+langchain-huggingface
+spacy
