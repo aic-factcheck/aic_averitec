@@ -142,7 +142,7 @@ def veracity_prediction(claim_with_evidence_file="data_store/dev_top_3_rerank_qa
         }
         predictions.append(json_data)
 
-    with open(args.output_file, "w", encoding="utf-8") as output_file:
+    with open(output_file, "w", encoding="utf-8") as output_file:
         json.dump(predictions, output_file, ensure_ascii=False, indent=4)
 
 
@@ -267,8 +267,8 @@ def veracity_prediction_v2(claim_with_evidence_file:str, output_file:str, best_c
         }
         predictions.append(json_data)
 
-    with open(args.output_file, "w", encoding="utf-8") as output_file:
-        json.dump(predictions, output_file, ensure_ascii=False, indent=4)
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(predictions, f, ensure_ascii=False, indent=4)
 
 
 
