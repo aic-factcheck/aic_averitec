@@ -155,3 +155,10 @@ and get its url using `script/jupyter_url.py`.
 ```bash
 python script/jupyter_url.py
 ```
+
+
+# Orig scheme:
+Claim -> (Query generation -> Search) -> BM25 reranking -> Evidence (Q+A) extraction -> Evidence Reranking -> Veracity prediction
+
+# New scheme 
+Claim -> (Query generation -> Search) -> reranking based on claim -> resolution generation (CoT)
