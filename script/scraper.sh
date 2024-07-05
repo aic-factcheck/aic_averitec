@@ -3,7 +3,7 @@
 for ((i=$2;i<$3;i++))
 do
   echo $i
-  python -m src.retrieval.scraper_for_knowledge_store -i data_store/"$1"_store/$i.tsv -o data_store/output_"$1" &
+  python -m aic_averitec.src.retrieval.scraper_for_knowledge_store -i /mnt/data/factcheck/averitec-data/data_store/urls/"$1"/"$1"_store/$i.tsv -o /mnt/data/factcheck/averitec-data/data_store/new/output_"$1" &
 done
 
 wait

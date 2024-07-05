@@ -33,8 +33,8 @@ def url2lines(url):
     if page is None:
         return []
 
-    lines = html2lines(page)
-    return lines
+    res = html2lines(page, url)
+    return res
 
 
 def line_correction(lines, max_size=100):
@@ -66,13 +66,14 @@ def line_correction(lines, max_size=100):
     return out_lines
 
 
-def html2lines(page):
+def html2lines(page, url):
     out_lines = []
 
     if len(page.strip()) == 0 or page is None:
         return out_lines
 
-    text = trafilatura.extract(page, config=DEFAULT_CONFIG)
+    text = trafilatura.extract(page, url=url, config=DEFAULT_CONFIG)
+    metadata = trafilatura.extract_metadata(page, default_url=url, config=DEFAULT_CONFIG).as_dict()
     reset_caches()
 
     if text is None:
@@ -80,4 +81,4 @@ def html2lines(page):
 
     return text.split(
         "\n"
-    )  # We just spit out the entire page, so need to reformat later.
+    ), text, metadata  # We just spit out the entire page, so need to reformat later.

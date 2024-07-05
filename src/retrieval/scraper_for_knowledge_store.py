@@ -8,7 +8,7 @@ import numpy as np
 import fitz
 import pandas as pd
 import requests
-from src.retrieval.html2lines import url2lines, line_correction
+from aic_averitec.src.retrieval.html2lines import url2lines, line_correction
 
 csv.field_size_limit(100000000)
 
@@ -39,9 +39,10 @@ def scrape_text_from_url(url, temp_name):
         for page in doc:  # iterate the document pages
             extracted_text += page.get_text() if page.get_text() else ""
 
-        return line_correction(extracted_text.split("\n"))
+        return line_correction(extracted_text.split("\n")), extracted_text, {}
 
-    return line_correction(url2lines(url))
+    lines, text, metadata = url2lines(url)
+    return line_correction(lines), text, metadata
 
 
 if __name__ == "__main__":
@@ -135,8 +136,10 @@ if __name__ == "__main__":
                 }
                 print(f"Scraping text for url_{index}: {url}!")
                 try:
-                    scrape_result = scrape_text_from_url(url, claim_id)
-                    json_data["url2text"] = scrape_result
+                    scrape_result_lines, scrapte_result_text, scrape_result_metadata = scrape_text_from_url(url, claim_id)
+                    json_data["url2text"] = scrape_result_lines
+                    json_data["url2page"] = scrapte_result_text
+                    json_data["url2metadata"] = scrape_result_metadata
 
                     if len(json_data["url2text"]) > 0:
                         total_scraped += 1
