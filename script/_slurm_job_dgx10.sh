@@ -9,7 +9,7 @@
 #SBATCH --output logs/jupyter.%j.out
 unset LMOD_ROOT; unset MODULESHOME; unset LMOD_PKG; unset LMOD_CMD; unset LMOD_DIR; unset FPATH; unset __LMOD_REF_COUNT_MODULEPATH; unset __LMOD_REF_COUNT__LMFILES_; unset _LMFILES_; unset _ModuleTable001_; unset _ModuleTable002_
 source /etc/profile.d/lmod.sh
-ml Python/3.10.4-GCCcore-11.3.0-bare
+module load Python/3.10.4-GCCcore-11.3.0-bare
 
 # Replace with your own virtual environment
 source ~/venvs/averitec/bin/activate

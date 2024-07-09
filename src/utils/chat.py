@@ -7,6 +7,7 @@ Classes:
 Functions:
     pretty_print(text: str, break_line_at: int = 90) -> str: Pretty prints a given text with line breaks at specified intervals.
 """
+
 import openai
 import json
 from typing import Any, Dict, List, Optional, Union
@@ -65,13 +66,14 @@ class SimpleJSONChat:
         for user_prompt in user_prompts:
             messages.append({"role": "user", "content": user_prompt})
 
+        response = self.client.chat.completions.create(
+            model=self.model, temperature=self.temperature, messages=messages, **self.openai_kwargs
+        )
         try:
-            response = self.client.chat.completions.create(
-                model=self.model, temperature=self.temperature, messages=messages, **self.openai_kwargs
-            )
             result = response.choices[0].message.content.replace("```json", "").replace("```", "")
             return json.loads(result) if self.parse_output else result
         except:
+            print("Error parsing response from OpenAI chat API.\n", response.choices[0].message.content)
             return []
 
     def __repr__(self) -> str:
