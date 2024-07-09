@@ -65,7 +65,7 @@ class SimpleJSONChat:
         messages = [{"role": "system", "content": system_prompt}]
         for user_prompt in user_prompts:
             messages.append({"role": "user", "content": user_prompt})
-
+        
         response = self.client.chat.completions.create(
             model=self.model, temperature=self.temperature, messages=messages, **self.openai_kwargs
         )
