@@ -17,3 +17,4 @@ langchain
 sentence-transformers
 langchain-huggingface
 spacy
+anthropic[vertex]

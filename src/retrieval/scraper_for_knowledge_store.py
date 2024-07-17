@@ -8,7 +8,7 @@ import numpy as np
 import fitz
 import pandas as pd
 import requests
-from aic_averitec.src.retrieval.html2lines import url2lines, line_correction
+from retrieval.html2lines import url2lines, line_correction
 
 csv.field_size_limit(100000000)
 

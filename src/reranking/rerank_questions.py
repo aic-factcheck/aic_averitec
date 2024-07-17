@@ -3,7 +3,7 @@ import json
 import torch
 import tqdm
 from transformers import BertTokenizer, BertForSequenceClassification
-from aic_averitec.src.models.DualEncoderModule import DualEncoderModule
+from models.DualEncoderModule import DualEncoderModule
 
 
 def triple_to_string(x):
