@@ -4,7 +4,7 @@ import tqdm
 import torch
 import pytorch_lightning as pl
 from transformers import BertTokenizer, BertForSequenceClassification, BitsAndBytesConfig
-from aic_averitec.src.models.SequenceClassificationModule import SequenceClassificationModule
+from models.SequenceClassificationModule import SequenceClassificationModule
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from peft import PeftModel
 
