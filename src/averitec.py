@@ -196,15 +196,12 @@ class DefaultClassifier(Classifier):
         **kwargs,
     ) -> ClassificationResult:
         if evidence_generation_result.metadata and "suggested_label" in evidence_generation_result.metadata:
-            return ClassificationResult(label=evidence_generation_result.proposed_label)
-        elif (
-            evidence_generation_result.metadata and "label_confidences" in evidence_generation_result.metadata
-        ):
-            return ClassificationResult(
-                label=max(
-                    evidence_generation_result.metadata["label_confidences"],
-                    key=evidence_generation_result.metadata["label_confidences"].get,
-                )
+            return ClassificationResult.from_dict(
+                {"probs": {evidence_generation_result.metadata["suggested_label"]: 1.0}}
+            )
+        if evidence_generation_result.metadata and "label_confidences" in evidence_generation_result.metadata:
+            return ClassificationResult.from_dict(
+                {"probs": evidence_generation_result.metadata["label_confidences"]}
             )
         return ClassificationResult(label="Not Enough Info")
 
