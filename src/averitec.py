@@ -99,7 +99,6 @@ class Datapoint:
 
 @dataclass
 class PipelineResult:
-    label: str = None
     datapoint: Datapoint = None
     evidence_generation_result: EvidenceGenerationResult = None
     retrieval_result: RetrievalResult = None
@@ -107,18 +106,17 @@ class PipelineResult:
 
 
 class Retriever:
-    def __call__(self, datapoint, *args, **kwargs) -> RetrievalResult:
+    def __call__(self, datapoint: Datapoint, *args, **kwargs) -> RetrievalResult:
         raise NotImplementedError
 
 
-# simple faiss retriever
 class SimpleFaissRetriever(Retriever):
     def __init__(self, path: str, embeddings: Embeddings):
         self.path = path
         self.embeddings = embeddings
         self.k = 10
 
-    def __call__(self, datapoint, *args, **kwargs) -> RetrievalResult:
+    def __call__(self, datapoint: Datapoint, *args, **kwargs) -> RetrievalResult:
         vecstore = FAISS.load_local(
             f"{self.path}/{datapoint.claim_id}",
             embeddings=self.embeddings,
@@ -130,26 +128,66 @@ class SimpleFaissRetriever(Retriever):
 
 class EvidenceGenerator:
     def __call__(
-        self, retrieval_results: List[RetrievalResult], datapoint: Datapoint, *args, **kwargs
+        self, datapoint: Datapoint, retrieval_result: RetrievalResult, *args, **kwargs
     ) -> EvidenceGenerationResult:
         raise NotImplementedError
 
 
-class ClaudeEvidenceGenerator(EvidenceGenerator):
-    def __init__(self, client: AnthropicVertex = None):
+class GptEvidenceGenerator(EvidenceGenerator):
+    def __init__(self, client: SimpleJSONChat = None, model="gpt-4o"):
         if client is None:
-            self.client = AnthropicVertex("europe-west1", "monterrey-177809")
-        self.client = client
+            self.client = SimpleJSONChat(model=model)
 
     def __call__(
-        self, retrieval_results: List[RetrievalResult], datapoint: Datapoint, *args, **kwargs
+        self, datapoint: Datapoint, retrieval_results: List[RetrievalResult], *args, **kwargs
     ) -> EvidenceGenerationResult:
-        pass
+        return EvidenceGenerationResult(
+            evidences=[Evidence(answer="I don't know", url="")],
+            metadata={
+                "suggested_label": "Supported",
+                "label_confidences": {
+                    "Supported": 0.5,
+                    "Refuted": 0.5,
+                    "Not Enough Info": 0.0,
+                    "Cherrypicking": 0.0,
+                },
+            },
+        )
 
 
 class Classifier:
-    def __call__(self, evidence: List[Evidence], datapoint: Datapoint, *args, **kwargs) -> str:
+    def __call__(
+        self,
+        datapoint: Datapoint,
+        evidence_generation_result: EvidenceGenerationResult,
+        retrieval_result: RetrievalResult,
+        *args,
+        **kwargs,
+    ) -> ClassificationResult:
         raise NotImplementedError
+
+
+class DefaultClassifier(Classifier):
+    def __call__(
+        self,
+        datapoint: Datapoint,
+        evidence_generation_result: EvidenceGenerationResult,
+        retrieval_result: RetrievalResult,
+        *args,
+        **kwargs,
+    ) -> ClassificationResult:
+        if evidence_generation_result.metadata and "suggested_label" in evidence_generation_result.metadata:
+            return ClassificationResult(label=evidence_generation_result.proposed_label)
+        elif (
+            evidence_generation_result.metadata and "label_confidences" in evidence_generation_result.metadata
+        ):
+            return ClassificationResult(
+                label=max(
+                    evidence_generation_result.metadata["label_confidences"],
+                    key=evidence_generation_result.metadata["label_confidences"].get,
+                )
+            )
+        return ClassificationResult(label="Not Enough Info")
 
 
 class Pipeline:
@@ -165,19 +203,20 @@ class Pipeline:
     ):
         self.retriever = retriever
         self.evidence_generator = evidence_generator
+        if classifier is None:
+            classifier = DefaultClassifier()
         self.classifier = classifier
 
     def __call__(self, datapoint, *args, **kwargs) -> PipelineResult:
-        retrieval_results = self.retriever(datapoint, *args, **kwargs)
-        evidence = self.evidence_generator(retrieval_results, datapoint, *args, **kwargs)
-        label = None
+        retrieval_result = self.retriever(datapoint, *args, **kwargs)
+        evidence_generation_result = self.evidence_generator(datapoint, retrieval_result, *args, **kwargs)
+        classification_result = self.classifier(
+            datapoint, evidence_generation_result, retrieval_result, *args, **kwargs
+        )
 
-        if isinstance(evidence, tuple) and len(evidence) == 2 and isinstance(evidence[1], str):
-            evidence, label = evidence
-
-        if self.classifier is not None:
-            if label is not None:
-                kwargs["label"] = label
-            label = self.classifier(evidence, datapoint, *args, **kwargs)
-
-        return PipelineResult(label=label, evidence=evidence, retrieval_resuts=retrieval_results)
+        return PipelineResult(
+            datapoint=datapoint,
+            evidence_generation_result=evidence_generation_result,
+            retrieval_result=retrieval_result,
+            classification_result=classification_result,
+        )
