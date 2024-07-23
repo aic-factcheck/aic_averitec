@@ -11,7 +11,6 @@ class Datapoint:
     reporting_source: str = None
     location_ISO_code: str = None
     label: str = None
-    split: str = "dev"
     metadata: dict = None
 
     @classmethod
@@ -26,7 +25,6 @@ class Datapoint:
             reporting_source=json_data.pop("reporting_source", None),
             location_ISO_code=json_data.pop("location_ISO_code", None),
             label=json_data.pop("label", None),
-            split=json_data.pop("split", "dev"),
             metadata=json_data,
         )
 
@@ -40,6 +38,5 @@ class Datapoint:
             "reporting_source": self.reporting_source,
             "location_ISO_code": self.location_ISO_code,
             "label": self.label,
-            "split": self.split,
             **self.metadata,
         }
