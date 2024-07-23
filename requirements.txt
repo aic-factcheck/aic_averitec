@@ -16,5 +16,6 @@ openai
 langchain
 sentence-transformers
 langchain-huggingface
+langchain-community
 spacy
 anthropic[vertex]
