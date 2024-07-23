@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+from typing import Dict, List, Union
 from classification import ClassificationResult, Classifier
 from evidence_generation import EvidenceGenerationResult, EvidenceGenerator
 from retrieval import RetrievalResult, Retriever
+import pickle
 
 
 @dataclass
@@ -86,6 +88,52 @@ class Pipeline:
         evidence_generation_result = self.evidence_generator(datapoint, retrieval_result, *args, **kwargs)
         classification_result = self.classifier(
             datapoint, evidence_generation_result, retrieval_result, *args, **kwargs
+        )
+
+        return PipelineResult(
+            datapoint=datapoint,
+            retrieval_result=retrieval_result,
+            evidence_generation_result=evidence_generation_result,
+            classification_result=classification_result,
+        )
+
+
+class MockPipeline(Pipeline):
+    """Skips the pipeline steps not specified in the constructor and mocks their results using the provided PipelineResult data (as path or list)."""
+
+    def __init__(
+        self,
+        dumps: Union[str, List[PipelineResult], Dict[int, PipelineResult]],
+        retriever: Retriever = None,
+        evidence_generator: EvidenceGenerator = None,
+        classifier: Classifier = None,
+    ):
+        if isinstance(dumps, str):
+            with open(dumps, "rb") as f:
+                dumps = pickle.load(f)
+        if isinstance(dumps, list):
+            dumps = {dp.datapoint.claim_id: dp for dp in dumps}
+        self.dumps = dumps
+
+        self.retriever, self.evidence_generator, self.classifier = retriever, evidence_generator, classifier
+
+    def __call__(self, datapoint, *args, **kwargs) -> PipelineResult:
+        dump = self.dumps[datapoint.claim_id]
+
+        retrieval_result = (
+            self.retriever(datapoint, *args, **kwargs) if self.retriever else dump.retrieval_result
+        )
+
+        evidence_generation_result = (
+            self.evidence_generator(datapoint, retrieval_result, *args, **kwargs)
+            if self.evidence_generator
+            else dump.evidence_generation_result
+        )
+
+        classification_result = (
+            self.classifier(datapoint, evidence_generation_result, retrieval_result, *args, **kwargs)
+            if self.classifier
+            else dump.classification_result
         )
 
         return PipelineResult(
