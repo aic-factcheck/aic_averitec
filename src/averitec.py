@@ -1,18 +1,20 @@
+import numpy as np
 from dataclasses import dataclass, field
-from typing import Any, Callable, List, Tuple, Union
+from typing import Any, Callable, List, Tuple, Union, Dict
 from utils.chat import SimpleJSONChat
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_community.vectorstores import FAISS
 from anthropic import AnthropicVertex
 
-claim = str
+label2id = {"Refuted": 0, "Supported": 1, "Not Enough Evidence": 2, "Conflicting Evidence/Cherrypicking": 3}
+id2label = {v: k for k, v in label2id.items()}
 
 
 @dataclass
 class RetrievalResult:
     documents: List[Document] = field(default_factory=list)
-    metadata: Any = None
+    metadata: Dict[str, Any] = None
 
     def __iter__(self):
         return iter(self.documents)
@@ -35,7 +37,7 @@ class Evidence:
 class EvidenceGenerationResult:
     evidences: List[Evidence] = field(default_factory=list)
     proposed_label: str = None
-    metadata: Any = None
+    metadata: Dict[str, Any] = None
 
     def __iter__(self):
         return iter(self.evidences)
@@ -49,8 +51,25 @@ class EvidenceGenerationResult:
 
 @dataclass
 class ClassificationResult:
-    label: str
-    metadata: Any = None
+    probs: np.ndarray[float] = None
+    metadata: Dict[str, Any] = None
+
+    def to_dict(self):
+        probs_dict = {id2label[i]: prob for i, prob in enumerate(self.probs)}
+        result = {"probs": probs_dict}
+        if self.metadata is not None:
+            result["metadata"] = self.metadata
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        probs = np.zeros(len(label2id))
+        for label, prob in data["probs"].items():
+            probs[label2id[label]] = prob
+        return cls(probs=probs, metadata=data.get("metadata", None))
+
+    def __str__(self) -> str:
+        return id2label[np.argmax(self.probs)]
 
 
 @dataclass
@@ -216,7 +235,7 @@ class Pipeline:
 
         return PipelineResult(
             datapoint=datapoint,
-            evidence_generation_result=evidence_generation_result,
             retrieval_result=retrieval_result,
+            evidence_generation_result=evidence_generation_result,
             classification_result=classification_result,
         )
