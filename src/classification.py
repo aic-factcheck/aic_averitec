@@ -10,6 +10,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from itertools import permutations
 import scipy.optimize as opt
 from sklearn.metrics import f1_score
+from sklearn.linear_model import LogisticRegression
 
 @dataclass
 class ClassificationResult:
@@ -245,4 +246,42 @@ class AverageEnsembleClassifier(Classifier):
 
             print(res)
             self.weights = res.x
-        
+
+
+class LogRegEnsembleClassifier(Classifier):
+    """Ensemble classifier that utilize stacking with meta model logistic regression"""
+    def __init__(self, classifiers: List[Classifier]):
+        self.classifiers = classifiers
+        self.logreg = LogisticRegression()
+
+    def __call__(self, datapoint, evidence_generation_result, retrieval_result):
+        clf_probs = [c(datapoint, evidence_generation_result, retrieval_result).probs for c in self.classifiers]
+
+        #stack the classfier probabilities into one input (they serve as features for the logreg model)
+        input = np.hstack(clf_probs).reshape(1, -1) 
+
+        return ClassificationResult(
+            probs=self.logreg.predict_proba(input),
+            metadata={"clf_probs": clf_probs}
+        )
+    
+
+    def fit(self, datapoints, evidence_generation_results, retrieval_results, metric:str="cross-entropy"):
+        """fit logreg"""
+        labels = [label2id[datapoint.label] for datapoint in datapoints]
+
+        predictions = []
+        for clf in self.classifiers:
+            clf_predictions = []
+            for datapoint, evidence_generation_result, retrieval_result in zip(datapoints, evidence_generation_results, retrieval_results):
+                clf_predictions.append(clf(datapoint, evidence_generation_result, retrieval_result).probs)
+
+            predictions.append(clf_predictions)
+
+        #convert to numpy array of shape (#num_classifiers, #num_datapoints, #num_classes)
+        predictions = np.array(predictions)
+
+        #fit logreg
+        input = np.hstack(predictions)
+
+        self.logreg.fit(input, labels)
