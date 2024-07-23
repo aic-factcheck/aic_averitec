@@ -17,7 +17,10 @@ source ~/venvs/averitec/bin/activate
 # cd ~/ullriher/aic_averitec
 
 # load your .env
+set -o allexport
 source .env
+set +o allexport
+
 
 export PYTHONPATH=src:$PYTHONPATH
 jupyter notebook --no-browser --port=$(shuf -i8000-9999 -n1) --ip=$(hostname -s)
