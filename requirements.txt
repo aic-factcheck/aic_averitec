@@ -18,4 +18,6 @@ sentence-transformers
 langchain-huggingface
 langchain-community
 spacy
+ipywidgets
+faiss-gpu
 anthropic[vertex]
