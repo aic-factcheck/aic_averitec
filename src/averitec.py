@@ -31,6 +31,7 @@ class Evidence:
     question: str = None
     answer: str
     url: str
+    scraped_text: str = None
 
 
 @dataclass
@@ -163,8 +164,7 @@ class GptEvidenceGenerator(EvidenceGenerator):
         return EvidenceGenerationResult(
             evidences=[Evidence(answer="I don't know", url="")],
             metadata={
-                "suggested_label": "Supported",
-                "label_confidences": {
+                "suggested_label": {
                     "Supported": 0.5,
                     "Refuted": 0.5,
                     "Not Enough Info": 0.0,
@@ -187,6 +187,8 @@ class Classifier:
 
 
 class DefaultClassifier(Classifier):
+    """Passes on the label suggested by evidence generator"""
+
     def __call__(
         self,
         datapoint: Datapoint,
@@ -196,14 +198,16 @@ class DefaultClassifier(Classifier):
         **kwargs,
     ) -> ClassificationResult:
         if evidence_generation_result.metadata and "suggested_label" in evidence_generation_result.metadata:
-            return ClassificationResult.from_dict(
-                {"probs": {evidence_generation_result.metadata["suggested_label"]: 1.0}}
-            )
-        if evidence_generation_result.metadata and "label_confidences" in evidence_generation_result.metadata:
-            return ClassificationResult.from_dict(
-                {"probs": evidence_generation_result.metadata["label_confidences"]}
-            )
-        return ClassificationResult(label="Not Enough Info")
+            suggested = evidence_generation_result.metadata["suggested_label"]
+            if isinstance(suggested, str):
+                return ClassificationResult.from_dict({"probs": {suggested: 1.0}})
+            if isinstance(suggested, dict):
+                return ClassificationResult.from_dict({"probs": suggested})
+            if isinstance(suggested, np.ndarray):
+                return ClassificationResult(probs=suggested)
+            if isinstance(suggested, ClassificationResult):
+                return suggested
+        return None
 
 
 class Pipeline:
