@@ -1,10 +1,15 @@
 import numpy as np
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 from averitec import Datapoint
 from evidence_generation import EvidenceGenerationResult
 from retrieval import RetrievalResult
 from labels import label2id, id2label
+import torch
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from itertools import permutations
+import scipy.optimize as opt
+from sklearn.metrics import f1_score
 
 @dataclass
 class ClassificationResult:
@@ -63,3 +68,181 @@ class DefaultClassifier(Classifier):
             if isinstance(suggested, ClassificationResult):
                 return suggested
         return None
+
+
+class HuggingfaceClassifier(Classifier):
+    """Uses a Huggingface text classification model to classify the datapoint"""
+    def __init__(self, model_path:str, device:Optional[str]=None, max_length:int=1024, rand_order_evidence:bool=False, num_orders:int = 10, seed:int=42) -> None:
+        super().__init__()
+        if device is None:
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        else:
+            self.device = device
+
+        #maximum length of input sequence
+        self.max_length = max_length
+
+        #if the evidence should be permuted
+        self.rand_order_evidence = rand_order_evidence
+        self.num_orders =num_orders
+
+        self.seed = seed
+
+        #load model and tokenizer
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_path).to(self.device)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+
+        #put model into evaluation mode
+        self.model.eval()
+
+    def __call__(
+        self,
+        datapoint: Datapoint,
+        evidence_generation_result: EvidenceGenerationResult,
+        retrieval_result: RetrievalResult,
+        *args,
+        **kwargs,
+    ) -> ClassificationResult:
+        claim = datapoint.claim
+
+        #concatenate all evidence into one string
+        qas = []
+        for e in evidence_generation_result.evidences:
+            qas.append(e.question + " " + e.answer)
+
+        evidences = []
+        if self.rand_order_evidence:
+            #set seed for reproducibility
+            np.random.seed(self.seed)
+            #all permutations are not feasible -> randomly select
+            for _ in range(min(self.num_orders, np.math.factorial(len(qas)))):
+                order = np.random.choice(len(qas), size=len(qas), replace=False) #one order
+
+                #create evidence string
+                evidence = " ".join([qas[j] for j in order])
+
+                evidences.append(evidence)
+
+            claims = [claim] * len(evidences)
+ 
+        else:
+            evidences = [" ".join(qas)]
+            claims = [claim]
+
+        #tokenize claim and evidence (without last whitespace)
+        inputs = self.tokenizer(claims, evidences, return_tensors='pt', padding=True, truncation=True, max_length=self.max_length)
+        inputs = {k: v.to(self.device) for k, v in inputs.items()} #move inputs to device
+
+        #get model output
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            logits = outputs.logits
+
+        #convert logits to probabilities
+        mean_logits = torch.mean(logits, dim=0)
+        probs = torch.softmax(mean_logits, dim=-1).cpu().numpy().squeeze()
+
+        return ClassificationResult(probs=probs, metadata={"logits": logits.cpu().numpy(), "mean_logits": mean_logits.cpu().numpy()})
+
+
+class AverageEnsembleClassifier(Classifier):
+    """Ensemble classifier that averages the predictions of multiple classifiers, when `weights` are provided, the predictions are weighted accordingly"""
+    def __init__(self, classifiers: List[Classifier], weights: np.ndarray=None):
+        self.classifiers = classifiers
+
+        assert(len(classifiers) == len(weights) if weights is not None else True) #check if number of classifiers and weights match
+
+        #when no weigths are provided, all classifiers are weighted equally
+        if weights is None:
+            self.weights = np.ones(len(classifiers))
+        else:
+            self.weights = weights
+
+    def __call__(self, datapoint, evidence_generation_result, retrieval_result):
+        clf_probs = [c(datapoint, evidence_generation_result, retrieval_result).probs for c in self.classifiers]
+        return ClassificationResult(
+            probs=np.average(clf_probs, axis=0, weights=self.weights),
+            metadata={"clf_probs": clf_probs}
+        )
+    
+
+    def fit_weights(self, datapoints, evidence_generation_results, retrieval_results, metric:str="cross-entropy"):
+        """fit weights using a validation set"""
+        labels = [label2id[datapoint.label] for datapoint in datapoints]
+
+        #labels in one hot representation
+        one_hot_labels = np.zeros((len(labels), len(label2id)))
+        for i, label in enumerate(labels):
+            one_hot_labels[i, label] = 1
+        
+        predictions = []
+        for clf in self.classifiers:
+            clf_predictions = []
+            for datapoint, evidence_generation_result, retrieval_result in zip(datapoints, evidence_generation_results, retrieval_results):
+                clf_predictions.append(clf(datapoint, evidence_generation_result, retrieval_result).probs)
+
+            predictions.append(clf_predictions)
+
+        #convert to numpy array of shape (#num_classifiers, #num_datapoints, #num_classes)
+        predictions = np.array(predictions)
+
+        def opt_func_multivariate(weights):
+            #calculate weighted averages for each data_point
+            weighted_avg = np.average(predictions, axis=0, weights=weights)
+
+            if metric == "cross-entropy":
+                #calculate cross entropy loss
+                loss = np.average(-np.sum(one_hot_labels * np.log(weighted_avg), axis=1))
+                return loss
+            elif metric == "f1":
+                #get predicted classes
+                pred_classes = np.argmax(weighted_avg, axis=-1)
+
+                #calculate macro F1 score
+                f1 = f1_score(labels, pred_classes, average='macro')
+
+                #we minize the negative F1 score
+                return -f1
+            else:
+                raise ValueError("Metric not supported")
+            
+        def opt_func_univariate(weight):
+            #calculate weighted averages for each data_point
+            weighted_avg = np.average(predictions, axis=0, weights=np.array([weight, 1-weight]))
+
+            if metric == "cross_entropy":
+                #calculate cross entropy loss
+                loss = np.average(-np.sum(one_hot_labels * np.log(weighted_avg), axis=1))
+                return loss
+            elif metric == "f1":
+                #get predicted classes
+                pred_classes = np.argmax(weighted_avg, axis=-1)
+
+                #calculate macro F1 score
+                f1 = f1_score(labels, pred_classes, average='macro')
+
+                #we minize the negative F1 score
+                return -f1
+            else:
+                raise ValueError("Metric not supported")
+
+
+        if len(self.classifiers) == 1:
+            self.weights = np.array([1.0])
+        elif len(self.classifiers) == 2:
+            res = opt.minimize_scalar(opt_func_univariate, bounds=(0, 1), method="bounded")
+            print(res)
+            self.weights = np.array([res.x, 1-res.x])
+
+        else:
+            #define constraints
+            cons = ({'type': 'eq', 'fun': lambda w: 1 - sum(w)})
+
+            #define bounds
+            bounds = [(0, 1)] * len(self.classifiers)
+
+            res = opt.minimize(opt_func_multivariate, self.weights, method="SLSQP", bounds=bounds, constraints=cons)
+
+            print(res)
+            self.weights = res.x
+        
