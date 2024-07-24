@@ -1,5 +1,8 @@
 import numpy as np
 import json
+import os
+import time
+from tqdm import tqdm
 from dataclasses import dataclass, field
 from typing import Any, List, Dict
 from averitec import Datapoint
@@ -7,6 +10,7 @@ from retrieval import RetrievalResult
 from utils.chat import SimpleJSONChat
 from scipy.special import softmax
 from labels import label2id
+from openai import OpenAI
 
 
 @dataclass
@@ -162,4 +166,120 @@ class GptEvidenceGenerator(EvidenceGenerator):
                 "llm_type": self.client.model,
                 "llm_output": gpt_data,
             },
+        )
+
+
+class GptBatchedEvidenceGenerator(GptEvidenceGenerator):
+    def __init__(self, model="gpt-4o", client=None):
+        super().__init__(model, client)
+        self.batch = []
+        self.fallback_gpt_generator = GptEvidenceGenerator()
+
+    def get_batch_dict(self, datapoint: Datapoint, retrieval_result: RetrievalResult):
+        system_prompt = self.format_system_prompt(retrieval_result)
+        user_prompt = datapoint.claim
+        return {
+            "custom_id": f"averitec-{datapoint.claim_id}",
+            "method": "POST",
+            "url": "/v1/chat/completions",
+            "body": {
+                "model": "gpt-4o",
+                # "model": "gpt-3.5-turbo-0125",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": 0,
+            },
+        }
+
+    def get_batch_files(self, batch_size=100, path="data_store/batch"):
+        batches = [self.batch[i : i + batch_size] for i in range(0, len(self.batch), batch_size)]
+        filenames = []
+        j = 0
+        if not os.path.exists(path):
+            os.makedirs(path)
+        for batch in batches:
+            j += 1
+            filenames.append(f"{path}/batch_{j}.jsonl")
+            with open(f"{path}/batch_{j}.jsonl", "w") as f:
+                for item in batch:
+                    f.write(json.dumps(item) + "\n")
+        return filenames
+
+    def submit_and_await_batches(self, files, outfile, sleep=10):
+        # if outfile already exists, read it
+        if os.path.exists(outfile):
+            with open(outfile, "r") as f:
+                print("!!!!! existing outfile found, skipping computation")
+                concat_text = f.read()
+        else:
+            client = OpenAI()
+            i = 1
+            concat_text = ""
+            for file in tqdm(files):
+                batch_input_file = client.files.create(file=open(file, "rb"), purpose="batch")
+
+                batch = client.batches.create(
+                    input_file_id=batch_input_file.id,
+                    endpoint="/v1/chat/completions",
+                    completion_window="24h",
+                    metadata={
+                        "description": f"dev-set job, batch {i}",
+                    },
+                )
+                print(batch)
+                while True:
+                    batch = client.batches.retrieve(batch.id)
+                    if batch.status == "completed":
+                        break
+                    time.sleep(sleep)
+                    print("waiting for batch to complete", batch.request_counts, batch.id)
+                print(f"batch {i} completed")
+                i += 1
+                file_response = client.files.content(batch.output_file_id)
+                concat_text += file_response.text
+                with open(outfile, "w") as f:
+                    f.write(concat_text)
+
+        result = []
+        for line in concat_text.split("\n"):
+            if not line:
+                continue
+            #print(json.loads(line))
+            result.append(json.loads(line)["response"]["body"]["choices"][0]["message"]["content"])
+        return result
+
+    def __call__(
+        self, datapoint: Datapoint, retrieval_result: RetrievalResult, *args, **kwargs
+    ) -> EvidenceGenerationResult:
+        self.batch.append(self.get_batch_dict(datapoint, retrieval_result))
+        return EvidenceGenerationResult(evidences=[], metadata={"suggested_label": [0, 0, 0, 0]})
+
+    def update_pipeline_result(self, pipeline_result, gpt_result, classifier):
+        from pipeline import PipelineResult
+
+        self.last_llm_output = gpt_result
+        gpt_data = self.parse_json(gpt_result)
+        try:
+            evidence_generation_result = EvidenceGenerationResult(
+                evidences=self.parse_evidence(gpt_data["questions"], pipeline_result.retrieval_result),
+                metadata={
+                    "suggested_label": self.parse_label_probabilities(gpt_data["claim_veracity"]),
+                    "llm_type": self.client.model,
+                    "llm_output": gpt_data,
+                },
+            )
+        except:
+            print("failed, using fallback gpt")
+            evidence_generation_result = self.fallback_gpt_generator(
+                pipeline_result.datapoint, pipeline_result.retrieval_result
+            )
+        return PipelineResult(
+            datapoint=pipeline_result.datapoint,
+            retrieval_result=pipeline_result.retrieval_result,
+            evidence_generation_result=evidence_generation_result,
+            classification_result=classifier(
+                pipeline_result.datapoint, evidence_generation_result, pipeline_result.retrieval_result
+            ),
         )
