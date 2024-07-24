@@ -209,6 +209,15 @@ class AverageEnsembleClassifier(Classifier):
 
                 #we minize the negative F1 score
                 return -f1
+            elif metric == "accuracy":
+                #get predicted classes
+                pred_classes = np.argmax(weighted_avg, axis=-1)
+
+                #calculate accuracy
+                acc = np.mean(labels == pred_classes)
+
+                #we minize the negative accuracy
+                return -acc
             else:
                 raise ValueError("Metric not supported")
             
@@ -229,6 +238,15 @@ class AverageEnsembleClassifier(Classifier):
 
                 #we minize the negative F1 score
                 return -f1
+            elif metric == "accuracy":
+                #get predicted classes
+                pred_classes = np.argmax(weighted_avg, axis=-1)
+
+                #calculate accuracy
+                acc = np.mean(labels == pred_classes)
+
+                #we minize the negative accuracy
+                return -acc
             else:
                 raise ValueError("Metric not supported")
 
