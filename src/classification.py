@@ -7,7 +7,6 @@ from retrieval import RetrievalResult
 from labels import label2id, id2label
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
-from itertools import permutations
 import scipy.optimize as opt
 from sklearn.metrics import f1_score
 from sklearn.linear_model import LogisticRegression
@@ -49,6 +48,9 @@ class Classifier:
 
 class DefaultClassifier(Classifier):
     """Passes on the label suggested by evidence generator"""
+    def __init__(self, evidence_generation_results=None) -> None:
+        super().__init__()
+        self.evidence_generation_results = evidence_generation_results 
 
     def __call__(
         self,
@@ -58,6 +60,10 @@ class DefaultClassifier(Classifier):
         *args,
         **kwargs,
     ) -> ClassificationResult:
+        #if own evidence generation results are provided, use them
+        if self.evidence_generation_results is not None:
+            evidence_generation_result = self.evidence_generation_results[datapoint.claim_id]
+
         if evidence_generation_result.metadata and "suggested_label" in evidence_generation_result.metadata:
             suggested = evidence_generation_result.metadata["suggested_label"]
             if isinstance(suggested, str):
@@ -69,7 +75,6 @@ class DefaultClassifier(Classifier):
             if isinstance(suggested, ClassificationResult):
                 return suggested
         return None
-
 
 class HuggingfaceClassifier(Classifier):
     """Uses a Huggingface text classification model to classify the datapoint"""
@@ -163,7 +168,7 @@ class AverageEnsembleClassifier(Classifier):
         clf_probs = [c(datapoint, evidence_generation_result, retrieval_result).probs for c in self.classifiers]
         return ClassificationResult(
             probs=np.average(clf_probs, axis=0, weights=self.weights),
-            metadata={"clf_probs": clf_probs}
+            metadata={"clf_probs": clf_probs, "weights": self.weights}
         )
     
 
@@ -211,7 +216,7 @@ class AverageEnsembleClassifier(Classifier):
             #calculate weighted averages for each data_point
             weighted_avg = np.average(predictions, axis=0, weights=np.array([weight, 1-weight]))
 
-            if metric == "cross_entropy":
+            if metric == "cross-entropy":
                 #calculate cross entropy loss
                 loss = np.average(-np.sum(one_hot_labels * np.log(weighted_avg), axis=1))
                 return loss
@@ -261,7 +266,7 @@ class LogRegEnsembleClassifier(Classifier):
         input = np.hstack(clf_probs).reshape(1, -1) 
 
         return ClassificationResult(
-            probs=self.logreg.predict_proba(input),
+            probs=self.logreg.predict_proba(input).squeeze(),
             metadata={"clf_probs": clf_probs}
         )
     
