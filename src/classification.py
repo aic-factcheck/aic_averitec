@@ -10,6 +10,9 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import scipy.optimize as opt
 from sklearn.metrics import f1_score
 from sklearn.linear_model import LogisticRegression
+import pandas as pd
+import json
+import pickle
 
 @dataclass
 class ClassificationResult:
@@ -150,6 +153,77 @@ class HuggingfaceClassifier(Classifier):
 
         return ClassificationResult(probs=probs, metadata={"logits": logits.cpu().numpy(), "mean_logits": mean_logits.cpu().numpy()})
 
+class RandomForestClassifier(Classifier):
+    def __init__(self) -> None:
+        super().__init__()
+        # Load the main model and preprocessing objects
+        with open('/mnt/data/factcheck/averitec-data/bryce_data/all_data_model.pkl', 'rb') as model_file:
+            self.main_rf = pickle.load(model_file)
+
+        with open('/mnt/data/factcheck/averitec-data/bryce_data/all_data_tfidf_vectorizer.pkl', 'rb') as tfidf_file:
+            self.main_vectorizer = pickle.load(tfidf_file)
+
+        with open('/mnt/data/factcheck/averitec-data/bryce_data/all_data_label_map.pkl', 'rb') as label_map_file:
+            self.main_label_map = pickle.load(label_map_file)
+
+        # Load the secondary model and preprocessing objects
+        with open('/mnt/data/factcheck/averitec-data/bryce_data/nee_cp_model.pkl', 'rb') as secondary_model_file:
+            self.secondary_rf = pickle.load(secondary_model_file)
+
+        with open('/mnt/data/factcheck/averitec-data/bryce_data/nee_cptfidf_vectorizer.pkl', 'rb') as secondary_tfidf_file:
+            self.secondary_vectorizer = pickle.load(secondary_tfidf_file)
+
+        with open('/mnt/data/factcheck/averitec-data/bryce_data/nee_cplabel_map.pkl', 'rb') as secondary_label_map_file:
+            self.secondary_label_map = pickle.load(secondary_label_map_file)
+
+        # Inverse label maps
+        self.main_label_map_inverse = {v: k for k, v in self.main_label_map.items()}
+        self.secondary_label_map_inverse = {v: k for k, v in self.secondary_label_map.items()}
+
+    # Preprocess claims using the respective vectorizers
+    def preprocess_claim(self, claim, vectorizer):
+        return vectorizer.transform([claim]).toarray()
+    
+    # First step: Classify claims using the main model
+    def classify_main(self, claim):
+        features = self.preprocess_claim(claim, self.main_vectorizer)
+        prediction = self.main_rf.predict(features)
+        probability_distribution = self.main_rf.predict_proba(features)
+        confidence = np.max(probability_distribution)
+        return prediction[0], confidence, probability_distribution[0]
+    
+    # Second step: Classify claims using the secondary model
+    def classify_secondary(self, claim):
+        features = self.preprocess_claim(claim, self.secondary_vectorizer)
+        prediction = self.secondary_rf.predict(features)
+        probability_distribution = self.secondary_rf.predict_proba(features)
+        return prediction[0], probability_distribution[0]
+
+    # Two-step classification process for a single claim
+    def predict_single_claim(self, claim):
+        predicted_label, confidence, probability_distribution = self.classify_main(claim)
+
+        if self.main_label_map_inverse[predicted_label] in ['Supported', 'Refuted'] and confidence >= 0.65:
+            # High confidence in main model's prediction
+            predicted_label_name = self.main_label_map_inverse[predicted_label]
+            class_probabilities = {self.main_label_map_inverse[i]: prob for i, prob in enumerate(probability_distribution)}
+        else:
+            # Use secondary model for further classification
+            predicted_label, probability_distribution = self.classify_secondary(claim)
+            predicted_label_name = self.secondary_label_map_inverse[predicted_label]
+            class_probabilities = {self.secondary_label_map_inverse[i]: prob for i, prob in enumerate(probability_distribution)}
+
+        return predicted_label_name, class_probabilities
+    
+    def __call__(self, datapoint: Datapoint, evidence_generation_result: EvidenceGenerationResult, retrieval_result: RetrievalResult, *args, **kwargs) -> ClassificationResult:
+        claim = datapoint.claim
+        predicted_label, class_probabilities = self.predict_single_claim(claim)
+        #remap class probabilities to np array
+        probs = np.zeros(len(label2id))
+        for label, prob in class_probabilities.items():
+            probs[label2id[label]] = prob
+
+        return ClassificationResult(probs=probs, metadata={"predicted_label": predicted_label})
 
 class AverageEnsembleClassifier(Classifier):
     """Ensemble classifier that averages the predictions of multiple classifiers, when `weights` are provided, the predictions are weighted accordingly"""
