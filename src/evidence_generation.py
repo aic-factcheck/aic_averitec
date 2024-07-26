@@ -381,10 +381,17 @@ class GptBatchedEvidenceGenerator(GptEvidenceGenerator):
         self.last_llm_output = gpt_result
         gpt_data = self.parse_json(gpt_result)
         try:
+            label_confidences = self.parse_label_probabilities(gpt_data["claim_veracity"])
+            if "veracity_verdict" in gpt_data:
+                suggested_label = self.parse_label(gpt_data["veracity_verdict"])
+            else:
+                suggested_label = self.parse_label(gpt_data["claim_veracity"])
+
             evidence_generation_result = EvidenceGenerationResult(
                 evidences=self.parse_evidence(gpt_data["questions"], pipeline_result.retrieval_result),
                 metadata={
-                    "suggested_label": self.parse_label_probabilities(gpt_data["claim_veracity"]),
+                    "suggested_label": suggested_label,
+                    "label_confidences": label_confidences,
                     "llm_type": self.client.model,
                     "llm_output": gpt_data,
                 },
@@ -431,7 +438,7 @@ class DynamicFewShotBatchedEvidenceGenerator(GptBatchedEvidenceGenerator):
 
     def format_system_prompt(self, retrieval_result: RetrievalResult, few_shot_examples) -> str:
         # alternative for not outputing 10 every time - maybe better for classfiers (not problem now): (There is no need to output all 10 questions if you know that the questions contain all necessary information for fact-checking of the claim)
-        result = "You are a professional fact checker, formulate up to 10 questions that cover all the facts needed to validate whether the factual statement (in User message) is true, false, uncertain or a matter of opinion.\nAfter formulating Your questions and their answers using the provided sources, You evaluate the possible veracity verdicts (Supported claim, Refuted claim, Not enough evidence, or Conflicting evidence/Cherrypicking) given your claim and evidence on a Likert scale (1 - Strongly disagree, 2 - Disagree, 3 - Neutral, 4 - Agree, 5 - Strongly agree).\nThe facts must be coming from these sources, please refer them using assigned IDs:"
+        result = "You are a professional fact checker, formulate up to 10 questions that cover all the facts needed to validate whether the factual statement (in User message) is true, false, uncertain or a matter of opinion. There is no need to output all 10 questions if you know that the questions you formulated contain all necessary information for fact-checking of the claim.\nAfter formulating Your questions and their answers using the provided sources, You evaluate the possible veracity verdicts (Supported claim, Refuted claim, Not enough evidence, or Conflicting evidence/Cherrypicking) given your claim and evidence on a Likert scale (1 - Strongly disagree, 2 - Disagree, 3 - Neutral, 4 - Agree, 5 - Strongly agree). Ultimately, you note the single likeliest veracity verdict according to your best knowledge.\nThe facts must be coming from these sources, please refer them using assigned IDs:"
         for i, e in enumerate(retrieval_result):
             result += f"\n---\n## Source ID: {i+1} ({e.metadata['url']})\n"
             result += "\n".join([e.metadata["context_before"], e.page_content, e.metadata["context_after"]])
@@ -448,7 +455,8 @@ class DynamicFewShotBatchedEvidenceGenerator(GptBatchedEvidenceGenerator):
         "Refuted": "<Likert-scale rating of how much You agree with the 'Refuted' veracity classification>",
         "Not Enough Evidence": "<Likert-scale rating of how much You agree with the 'Not Enough Evidence' veracity classification>",
         "Conflicting Evidence/Cherrypicking": "<Likert-scale rating of how much You agree with the 'Conflicting Evidence/Cherrypicking' veracity classification>"
-    }
+    },
+    "veracity_vedict": "<The suggested veracity classification for the claim>"
 }
 ```"""
 
@@ -495,9 +503,13 @@ class DynamicFewShotBatchedEvidenceGenerator(GptBatchedEvidenceGenerator):
         )
         return EvidenceGenerationResult(evidences=[], metadata={"suggested_label": [0, 0, 0, 0]})
 
+
 class ClaudeDFSEvidenceGenerator(DynamicFewShotEvidenceGenerator):
     def __init__(
-        self, model="claude-3-5-sonnet@20240620", region="europe-west1", project_id="monterrey-177809",
+        self,
+        model="claude-3-5-sonnet@20240620",
+        region="europe-west1",
+        project_id="monterrey-177809",
         reference_corpus_path="/mnt/data/factcheck/averitec-data/data/train.json",
         k=10,
     ):
