@@ -385,7 +385,7 @@ class GptBatchedEvidenceGenerator(GptEvidenceGenerator):
             if "veracity_verdict" in gpt_data:
                 suggested_label = self.parse_label(gpt_data["veracity_verdict"])
             else:
-                suggested_label = self.parse_label(gpt_data["claim_veracity"])
+                suggested_label = label_confidences
 
             evidence_generation_result = EvidenceGenerationResult(
                 evidences=self.parse_evidence(gpt_data["questions"], pipeline_result.retrieval_result),
@@ -396,7 +396,8 @@ class GptBatchedEvidenceGenerator(GptEvidenceGenerator):
                     "llm_output": gpt_data,
                 },
             )
-        except:
+        except Exception as e:
+            print(e)
             print("failed, using fallback gpt")
             evidence_generation_result = self.fallback_gpt_generator(
                 pipeline_result.datapoint, pipeline_result.retrieval_result
@@ -436,9 +437,15 @@ class DynamicFewShotBatchedEvidenceGenerator(GptBatchedEvidenceGenerator):
 
         super().__init__(model, client)
 
-    def format_system_prompt(self, retrieval_result: RetrievalResult, few_shot_examples) -> str:
+    def format_system_prompt(
+        self, retrieval_result: RetrievalResult, few_shot_examples, author=None, date=None
+    ) -> str:
         # alternative for not outputing 10 every time - maybe better for classfiers (not problem now): (There is no need to output all 10 questions if you know that the questions contain all necessary information for fact-checking of the claim)
-        result = "You are a professional fact checker, formulate up to 10 questions that cover all the facts needed to validate whether the factual statement (in User message) is true, false, uncertain or a matter of opinion. There is no need to output all 10 questions if you know that the questions you formulated contain all necessary information for fact-checking of the claim.\nAfter formulating Your questions and their answers using the provided sources, You evaluate the possible veracity verdicts (Supported claim, Refuted claim, Not enough evidence, or Conflicting evidence/Cherrypicking) given your claim and evidence on a Likert scale (1 - Strongly disagree, 2 - Disagree, 3 - Neutral, 4 - Agree, 5 - Strongly agree). Ultimately, you note the single likeliest veracity verdict according to your best knowledge.\nThe facts must be coming from these sources, please refer them using assigned IDs:"
+        result = "You are a professional fact checker, formulate up to 10 questions that cover all the facts needed to validate whether the factual statement (in User message) is true, false, uncertain or a matter of opinion. "
+        if author and date:
+            result += "The claim was made by " + author + " on " + date + "."
+        # result += "There is no need to output all 10 questions if you know that the questions you formulated contain all necessary information for fact-checking of the claim."
+        result += "\nAfter formulating Your questions and their answers using the provided sources, You evaluate the possible veracity verdicts (Supported claim, Refuted claim, Not enough evidence, or Conflicting evidence/Cherrypicking) given your claim and evidence on a Likert scale (1 - Strongly disagree, 2 - Disagree, 3 - Neutral, 4 - Agree, 5 - Strongly agree). Ultimately, you note the single likeliest veracity verdict according to your best knowledge.\nThe facts must be coming from these sources, please refer them using assigned IDs:"
         for i, e in enumerate(retrieval_result):
             result += f"\n---\n## Source ID: {i+1} ({e.metadata['url']})\n"
             result += "\n".join([e.metadata["context_before"], e.page_content, e.metadata["context_after"]])
@@ -456,7 +463,7 @@ class DynamicFewShotBatchedEvidenceGenerator(GptBatchedEvidenceGenerator):
         "Not Enough Evidence": "<Likert-scale rating of how much You agree with the 'Not Enough Evidence' veracity classification>",
         "Conflicting Evidence/Cherrypicking": "<Likert-scale rating of how much You agree with the 'Conflicting Evidence/Cherrypicking' veracity classification>"
     },
-    "veracity_vedict": "<The suggested veracity classification for the claim>"
+    "veracity_verdict": "<The suggested veracity classification for the claim>"
 }
 ```"""
 
@@ -484,7 +491,9 @@ class DynamicFewShotBatchedEvidenceGenerator(GptBatchedEvidenceGenerator):
         top_n = np.argsort(scores)[::-1][: self.k]
         few_shot_examples = [self.reference_corpus[i] for i in top_n]
         # get system prompt
-        system_prompt = self.format_system_prompt(retrieval_result, few_shot_examples)
+        system_prompt = self.format_system_prompt(
+            retrieval_result, few_shot_examples, datapoint.speaker, datapoint.claim_date
+        )
         # call gpt
         self.batch.append(
             {
