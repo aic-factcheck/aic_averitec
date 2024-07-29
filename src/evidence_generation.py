@@ -30,8 +30,13 @@ class Evidence:
             "url": self.url,
             "scraped_text": self.scraped_text,
         }
-        if self.answer_type:
+        if self.answer_type and False:
             result["answer_type"] = self.answer_type
+
+        if self.url is None:
+            result["answer_type"] = "Unanswerable"
+            result["answer"] = "No answer could be found."
+            #result["comment"] = self.answer
         return result
 
 
@@ -110,7 +115,7 @@ class EvidenceGenerator:
         if "abs" in text.lower():
             return "Abstractive"
         return None
-    
+
     @classmethod
     def parse_evidence(cls, input_data, retrieval_result) -> List[Evidence]:
         result = []
