@@ -21,14 +21,18 @@ class Evidence:
     answer: str = None
     url: str = None
     scraped_text: str = None
+    answer_type: str = None
 
     def to_dict(self):
-        return {
+        result = {
             "question": self.question,
             "answer": self.answer,
             "url": self.url,
             "scraped_text": self.scraped_text,
         }
+        if self.answer_type:
+            result["answer_type"] = self.answer_type
+        return result
 
 
 @dataclass
@@ -96,12 +100,25 @@ class EvidenceGenerator:
             return []
 
     @classmethod
+    def parse_answer_type(cls, text):
+        if "unans" in text.lower():
+            return "Unanswerable"
+        if "boo" in text.lower():
+            return "Boolean"
+        if "ext" in text.lower():
+            return "Extractive"
+        if "abs" in text.lower():
+            return "Abstractive"
+        return None
+    
+    @classmethod
     def parse_evidence(cls, input_data, retrieval_result) -> List[Evidence]:
         result = []
         for e in input_data:
             evidence = Evidence(question=e.get("question", None), answer=e.get("answer", None))
             try:
                 id = int(str(e["source"]).split(",")[0]) - 1
+                evidence.answer_type = cls.parse_answer_type(e.get("answer_type", ""))
                 evidence.url = retrieval_result[id].metadata["url"]
                 evidence.scraped_text = "\n".join(
                     [
@@ -113,6 +130,7 @@ class EvidenceGenerator:
             except:
                 evidence.url = None
                 evidence.scraped_text = None
+                evidence.answer_type = "Unanswerable"
             result.append(evidence)
         return result
 
@@ -445,7 +463,7 @@ class DynamicFewShotBatchedEvidenceGenerator(GptBatchedEvidenceGenerator):
         if author and date:
             result += "The claim was made by " + author + " on " + date + "."
         # result += "There is no need to output all 10 questions if you know that the questions you formulated contain all necessary information for fact-checking of the claim."
-        result += "\nAfter formulating Your questions and their answers using the provided sources, You evaluate the possible veracity verdicts (Supported claim, Refuted claim, Not enough evidence, or Conflicting evidence/Cherrypicking) given your claim and evidence on a Likert scale (1 - Strongly disagree, 2 - Disagree, 3 - Neutral, 4 - Agree, 5 - Strongly agree). Ultimately, you note the single likeliest veracity verdict according to your best knowledge.\nThe facts must be coming from these sources, please refer them using assigned IDs:"
+        result += "Each question has one of four answer types: Boolean, Extractive, Abstractive and Unanswerable using the provided sources.\nAfter formulating Your questions and their answers using the provided sources, You evaluate the possible veracity verdicts (Supported claim, Refuted claim, Not enough evidence, or Conflicting evidence/Cherrypicking) given your claim and evidence on a Likert scale (1 - Strongly disagree, 2 - Disagree, 3 - Neutral, 4 - Agree, 5 - Strongly agree). Ultimately, you note the single likeliest veracity verdict according to your best knowledge.\nThe facts must be coming from these sources, please refer them using assigned IDs:"
         for i, e in enumerate(retrieval_result):
             result += f"\n---\n## Source ID: {i+1} ({e.metadata['url']})\n"
             result += "\n".join([e.metadata["context_before"], e.page_content, e.metadata["context_after"]])
@@ -454,8 +472,8 @@ class DynamicFewShotBatchedEvidenceGenerator(GptBatchedEvidenceGenerator):
 {
     "questions":
         [
-            {"question": "<Your first question>", "answer": "<The answer to the Your first question>", "source": "<Single numeric source ID backing the answer for Your first question>"},
-            {"question": "<Your second question>", "answer": "<The answer to the Your second question>", "source": "<Single numeric Source ID backing the answer for Your second question>"}
+            {"question": "<Your first question>", "answer": "<The answer to the Your first question>", "source": "<Single numeric source ID backing the answer for Your first question>", "answer_type":"<The type of first answer>"},
+            {"question": "<Your second question>", "answer": "<The answer to the Your second question>", "source": "<Single numeric Source ID backing the answer for Your second question>", "answer_type":"<The type of second answer>"}
         ],
     "claim_veracity": {
         "Supported": "<Likert-scale rating of how much You agree with the 'Supported' veracity classification>",
@@ -470,16 +488,17 @@ class DynamicFewShotBatchedEvidenceGenerator(GptBatchedEvidenceGenerator):
         # add few shot examples
         result += """\n---\n## Few-shot learning\nYou have access to the following few-shot learning examples for questions and answers.:\n"""
         for example in few_shot_examples:
+            result += f'\n### Question examples for claim "{example["claim"]}" (verdict {example["label"]})'
             for q in example["questions"]:
                 question = q["question"]
+                if "answers" not in q or not q["answers"]:
+                    q["answers"] = [{"answer": "No answer could be found.", "answer_type": "Unanswerable"}]
                 for a in q["answers"]:
                     if a["answer_type"] == "Boolean":
-                        answer = a["answer"] + ", because " + a["boolean_explanation"]
-                    elif a["answer_type"] in ["Extractive", "Abstractive"]:
-                        answer = a["answer"]
+                        answer = a["answer"] + ". " + a["boolean_explanation"]
                     else:
-                        continue
-                    result += f'\n#Example for claim "{example["claim"]}": "question": "{question}", "answer": "{answer}"\n'
+                        answer = a["answer"]
+                    result += f'\n"question": "{question}", "answer": "{answer}", "answer_type": "{a["answer_type"]}"\n'
         return result
 
     def __call__(
