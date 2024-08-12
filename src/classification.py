@@ -79,6 +79,32 @@ class DefaultClassifier(Classifier):
                 return suggested
         return None
 
+class NoTiebreakClassifier(DefaultClassifier):
+    """Passes on the label suggested by evidence generator without tiebreak"""
+    def __call__(
+        self,
+        datapoint: Datapoint,
+        evidence_generation_result: EvidenceGenerationResult,
+        retrieval_result: RetrievalResult,
+        *args,
+        **kwargs,
+    ) -> ClassificationResult:
+        #if own evidence generation results are provided, use them
+        if self.evidence_generation_results is not None:
+            evidence_generation_result = self.evidence_generation_results[datapoint.claim_id]
+
+        if evidence_generation_result.metadata and "label_confidences" in evidence_generation_result.metadata:
+            suggested = evidence_generation_result.metadata["label_confidences"]
+            if isinstance(suggested, str):
+                return ClassificationResult.from_dict({"probs": {suggested: 1.0}})
+            if isinstance(suggested, dict):
+                return ClassificationResult.from_dict({"probs": suggested})
+            if isinstance(suggested, np.ndarray) or isinstance(suggested, list):
+                return ClassificationResult(probs=np.array(suggested))
+            if isinstance(suggested, ClassificationResult):
+                return suggested
+        return super().__call__(datapoint, evidence_generation_result, retrieval_result, *args, **kwargs)
+
 class HuggingfaceClassifier(Classifier):
     """Uses a Huggingface text classification model to classify the datapoint"""
     def __init__(self, model_path:str, device:Optional[str]=None, max_length:int=1024, rand_order_evidence:bool=False, num_orders:int = 10, seed:int=42) -> None:

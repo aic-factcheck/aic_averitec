@@ -18,7 +18,7 @@ class PipelineResult:
         return {
             "claim_id": self.datapoint.claim_id,
             "claim": self.datapoint.claim,
-            "evidence": [e.to_dict() for e in self.evidence_generation_result if e.url is not None],
+            "evidence": [e.to_dict() for e in self.evidence_generation_result if True or e.url is not None],
             "pred_label": str(self.classification_result),
         }
 
