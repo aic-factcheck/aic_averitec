@@ -5,20 +5,24 @@ from openai import OpenAI
 from tqdm import tqdm
 
 client = OpenAI(
-    base_url="http://g04:8094/v1",
+    base_url="http://g12:8095/v1",
     api_key="token-abc123",
 )
 
 #files in directory
-DIR = '/mnt/data/factcheck/averitec-data/data_store/batch_jobs/dev_mmr+gpt4o-dfewshot-tiebrk-atype'
-OUT_DIR = "/mnt/data/factcheck/averitec-data/data_store/batch_jobs_llama_res/dev_mmr+gpt4o-dfewshot-tiebrk-atype"
+DIR = '/mnt/data/factcheck/averitec-data/data_store/batch_jobs/test_mmr+gpt4o-dfewshot-tiebrk-atype'
+OUT_DIR = "/mnt/data/factcheck/averitec-data/data_store/batch_jobs_llama_res/test_mmr+gpt4o-dfewshot-tiebrk-atype"
 files = os.listdir(DIR)
 sorted_files = sorted(files)
 #leave only files with batch prefix
 sorted_files = [f for f in sorted_files if f.startswith("batch")]
 
-results = {}
+#take only second half
+sorted_files = sorted_files[12:]
+
+
 for f in sorted_files:
+    results = {}
     with open(os.path.join(DIR, f), "r") as file:
         for line in tqdm(file):
             data = json.loads(line)
