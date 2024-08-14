@@ -5,7 +5,7 @@ from openai import OpenAI
 from tqdm import tqdm
 
 client = OpenAI(
-    base_url="http://g12:8095/v1",
+    base_url="http://g03:8094/v1",
     api_key="token-abc123",
 )
 
@@ -18,7 +18,23 @@ sorted_files = sorted(files)
 sorted_files = [f for f in sorted_files if f.startswith("batch")]
 
 #take only second half
-sorted_files = sorted_files[12:]
+sorted_files = [sorted_files[2]]
+print(sorted_files)
+
+sorted_files = ["batch_2.jsonl", "batch_19.jsonl", "batch_11.jsonl"]
+
+class DummyChatCompletion:
+    def __init__(self, choices):
+        self.choices = choices
+
+class DummyChoice:
+    def __init__(self, message):
+        self.message = message
+
+class DummyMessage:
+    def __init__(self, content):
+        self.content = content
+
 
 
 for f in sorted_files:
@@ -26,10 +42,13 @@ for f in sorted_files:
     with open(os.path.join(DIR, f), "r") as file:
         for line in tqdm(file):
             data = json.loads(line)
-            completion = client.chat.completions.create(model="hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4", 
-                                                        messages=data["body"]["messages"], 
-                                                        temperature=data["body"]["temperature"])
-            results[data["custom_id"]] = completion        
+            try:
+                completion = client.chat.completions.create(model="hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4", 
+                                                            messages=data["body"]["messages"], 
+                                                            temperature=data["body"]["temperature"])
+                results[data["custom_id"]] = completion
+            except Exception as e:
+                results[data["custom_id"]] = DummyChatCompletion(choices=[DummyChoice(message=DummyMessage(content=f"ERROR - API FAILED - exception: {e}"))])      
 
     #save results to pickle
     with open(os.path.join(OUT_DIR, f[:-6] + "_" + "results.pickle"), "wb") as out_f:
