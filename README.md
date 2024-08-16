@@ -162,3 +162,6 @@ Claim -> (Query generation -> Search) -> BM25 reranking -> Evidence (Q+A) extrac
 
 # New scheme 
 Claim -> (Query generation -> Search) -> reranking based on claim -> resolution generation (CoT)
+
+# Usage of AI assistants
+While writing code in this repository, we used the help of GitHub Copilot.
