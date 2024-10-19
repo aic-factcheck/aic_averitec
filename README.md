@@ -56,6 +56,9 @@ and get its url using `script/jupyter_url.py`.
 python script/jupyter_url.py
 ```
 
+### Run Pipeline
+TODO describe how to run the pipeline in some basic way
+
 ## Results
 
 Our system achieved the 3rd place on AVeriTeC test set evaluation performed on the [EvalAI platform](https://eval.ai/web/challenges/challenge-page/2285/leaderboard/5655). The test set results are also provided in the following table (with our submission hihglighted in bold):
