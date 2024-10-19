@@ -4,7 +4,7 @@
 
 This repository is the official implementation of [AIC CTU system at AVeriTeC: Re-framing automated fact-checking as a simple RAG task](https://arxiv.org/abs/2410.11446). This system description paper describes our 3rd place submission in the [AVeriTeC Shared Task](https://fever.ai/task.html) which was organised as a part of the 7th FEVER workshop co-located with [EMNLP 2024](https://2024.emnlp.org/program/workshops/) conference.
 
-## Abstract & Description
+## Abstract & Diagram
 > This paper describes our 3rd place submission in the AVeriTeC shared task in which we attempted to address the challenge of fact-checking with evidence retrieved in the wild using a simple scheme of Retrieval-Augmented Generation (RAG) designed for the task, leveraging the predictive power of Large Language Models. We release our codebase and explain its two modules - the Retriever and the Evidence & Label generator - in detail, justifying their features such as MMR-reranking and Likert-scale confidence estimation. We evaluate our solution on AVeriTeC dev and test set and interpret the results, picking the GPT-4o as the most appropriate model for our pipeline at the time of our publication, with Llama 3.1 70B being a promising open-source alternative. We perform an empirical error analysis to see that faults in our predictions often coincide with noise in the data or ambiguous fact-checks, provoking further research and data augmentation.
 
 ![Diagram of our pipeline.](pipeline.png "Pipeline diagram")
