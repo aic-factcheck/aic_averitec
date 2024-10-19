@@ -1,7 +1,3 @@
----
-license: cc-by-nc-4.0
----
-
 # AVeriTeC
 
 Data, knowledge store and source code to reproduce the baseline experiments for the [AVeriTeC](https://arxiv.org/abs/2305.13117) dataset, which will be used for the 7th [FEVER](https://fever.ai/) workshop co-hosted at EMNLP 2024.
