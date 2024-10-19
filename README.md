@@ -91,7 +91,7 @@ Our system achieved the 3rd place on AVeriTeC test set evaluation performed on t
 | 23   | Factors                         | 0.20       | 0.14      | 0.05               |
 
 ## Contributing
-Our system is licensed by CC BY-NC 4.0 license, defined in the [LICENSE](LICENSE) file. To contribute to this repository, please reach out to the authors via contacts in our paper.
+Our system is licensed by CC BY-NC 4.0 license, defined in the [LICENSE](LICENSE.md) file. To contribute to this repository, please reach out to the authors via contacts in our paper.
 
 ## Usage of AI assistants
 While writing code in this repository, we used the help of GitHub Copilot.
